@@ -14,6 +14,13 @@ namespace backend.Controllers
         {
             _context = context;
         }
+        
+        [HttpGet]
+        public async Task<IActionResult> ListarMesas()
+        {
+             var mesas = await _context.Mesas.ToListAsync();
+            return Ok(mesas);
+        }
 
         // GET: api/Mesas/disponibilidade?dataHora=2025-12-01T19:00:00&numeroPessoas=2
         [HttpGet("disponibilidade")]
