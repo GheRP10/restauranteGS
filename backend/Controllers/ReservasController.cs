@@ -3,6 +3,7 @@ using backend.DTOs;
 using backend.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using backend.Services;
 
 namespace backend.Controllers
 {
@@ -11,20 +12,22 @@ namespace backend.Controllers
     public class ReservasController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly RabbitMQService _rabbitMQ; // Serviço de Mensageria
 
-        public ReservasController(AppDbContext context)
+        public ReservasController(AppDbContext context, RabbitMQService rabbitMQ)
         {
             _context = context;
+            _rabbitMQ = rabbitMQ;
         }
 
         [HttpPost]
         public async Task<IActionResult> CriarReserva([FromBody] CriarReservaDto dto)
         {
-            // Garantir que a DataHoraInicio está em UTC
+            // 1. Garantir que a DataHoraInicio está em UTC
             DateTime dataInicioUtc = DateTime.SpecifyKind(dto.DataHoraInicio, DateTimeKind.Utc);
 
             // ==================================================================================
-            // REGRAS DE NEGÓCIO 
+            // REGRAS DE NEGÓCIO
             // ==================================================================================
             
             if (dataInicioUtc < DateTime.UtcNow)
@@ -34,7 +37,7 @@ namespace backend.Controllers
 
             // ==================================================================================
 
-            // Obter Mesa e Restaurante Associado
+            // 2. Obter Mesa e Restaurante Associado
             var mesa = await _context.Mesas
                 .Include(m => m.Restaurante)
                 .FirstOrDefaultAsync(m => m.Id == dto.MesaId);
@@ -49,16 +52,16 @@ namespace backend.Controllers
                 return StatusCode(500, "Erro crítico: A mesa não pertence a um restaurante.");
             }
 
-            // Calcular DataHoraFim com base no Tempo Padrão do Restaurante
+            // 3. Calcular DataHoraFim com base no Tempo Padrão do Restaurante
             int tempoPadrao = mesa.Restaurante.TempoPadraoReserva;
             DateTime dataFimUtc = dataInicioUtc.AddMinutes(tempoPadrao);
 
-            //  Iniciar Transação
+            // 4. Iniciar Transação (Bloqueio)
             using var transaction = await _context.Database.BeginTransactionAsync();
 
             try
             {
-                // Verificar Conflito de Horário
+                // 5. Verificar Conflito de Horário (Overbooking)
                 bool existeConflito = await _context.Reservas.AnyAsync(r =>
                     r.MesaId == dto.MesaId &&
                     r.Status != "CANCELADA" &&
@@ -72,7 +75,7 @@ namespace backend.Controllers
                     return Conflict("Esta mesa já está reservada para o horário selecionado.");
                 }
 
-                // Criar e Salvar Nova Reserva   
+                // 6. Criar e Salvar Nova Reserva   
                 var novaReserva = new Reserva
                 {
                     MesaId = dto.MesaId,
@@ -87,8 +90,22 @@ namespace backend.Controllers
                 _context.Reservas.Add(novaReserva);
                 await _context.SaveChangesAsync();
 
-                // Confirmar Transação
+                // 7. Confirmar Transação
                 await transaction.CommitAsync();
+
+                // ========================================================
+                // 8. PUBLICAR NOTIFICAÇÃO NO RABBITMQ (Assíncrono) 
+                // ========================================================
+                var dadosNotificacao = new 
+                {
+                    ReservaId = novaReserva.Id,
+                    Data = novaReserva.DataHoraInicio,
+                    Pessoas = novaReserva.NumeroPessoas,
+                    Mensagem = "Reserva confirmada com sucesso!"
+                };
+
+                await _rabbitMQ.EnviarNotificacaoAsync(dadosNotificacao);
+                // ========================================================
 
                 return CreatedAtAction(nameof(ListarReservas), new { id = novaReserva.Id }, novaReserva);
             }

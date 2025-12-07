@@ -29,11 +29,13 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// E. Configurar RabbitMQ Service
+builder.Services.AddScoped<backend.Services.RabbitMQService>();
+
 var app = builder.Build();
 
 // ==================================================================
 // 2. CONFIGURAÇÃO DO PIPELINE (Middleware)
-// A ordem aqui importa MUITO!
 // ==================================================================
 
 // Se estiver em desenvolvimento, ativa o Swagger
@@ -43,7 +45,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// A. Aplicar CORS (Deve vir ANTES de Authorization e MapControllers)
+// A. Aplicar CORS 
 app.UseCors("AllowAll");
 
 // B. Autorização (Se houver no futuro)
