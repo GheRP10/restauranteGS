@@ -12,16 +12,18 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
     });
 });
 
 builder.Services.AddControllers();
 
+// ------------------------------------------------------------------
+// CONEXÃO COM BANCO (TRADUTOR PARA RAILWAY)
+// ------------------------------------------------------------------
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
+// Pega a variável do Railway se estiver em produção
 if (string.IsNullOrEmpty(connectionString))
 {
     connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
@@ -34,20 +36,19 @@ if (!string.IsNullOrEmpty(connectionString) && connectionString.StartsWith("post
     
     connectionString = $"Host={databaseUri.Host};Port={databaseUri.Port};Database={databaseUri.AbsolutePath.TrimStart('/')};Username={userInfo[0]};Password={userInfo[1]};Ssl Mode=Require;Trust Server Certificate=true";
 }
-// ------------------------------------------------------------------
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
+// Swagger e RabbitMQ
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-
 builder.Services.AddScoped<backend.Services.RabbitMQService>();
 
 var app = builder.Build();
 
 // ==================================================================
-// 2. AUTO-MIGRATION & SEED (CRIA TABELAS E DADOS)
+// 2. CRIAÇÃO AUTOMÁTICA DO BANCO E DADOS (SEED COMPLETO)
 // ==================================================================
 using (var scope = app.Services.CreateScope())
 {
@@ -56,23 +57,29 @@ using (var scope = app.Services.CreateScope())
     {
         var context = services.GetRequiredService<AppDbContext>();
         
-        // Garante que o banco foi criado
+        // Garante que o banco antigo (com colunas erradas) seja apagado
+        context.Database.EnsureDeleted();
+        // Cria o banco novo com a estrutura correta (Restaurante.cs)
         context.Database.EnsureCreated();
+        // -----------------------------------
 
-        // Se não houver restaurantes, cria os dados padrão
+        // Popula os dados se não existir nenhum restaurante
         if (!context.Restaurantes.Any())
         {
-            Console.WriteLine("--> Criando dados iniciais no Banco (Seed)...");
-
+            Console.WriteLine("--> Populando banco de dados...");
+            
+            // 1. Cria o Restaurante
             var restaurante = new Restaurante
             {
-                Nome = "Restaurante GS",
-                Endereco = "Nuvem Railway",
-                Telefone = "9999-9999",
-                TempoPadraoReserva = 90
+                Nome = "Bistrô do Dev",
+                Endereco = "Nuvem Railway, 123",
+                Telefone = "11 99999-9999",
+                TempoPadraoReserva = 90,
+                HoraAbertura = new TimeSpan(18, 0, 0),    // Abre as 18h
+                HoraFechamento = new TimeSpan(23, 59, 0)  // Fecha as 23h59
             };
             context.Restaurantes.Add(restaurante);
-            context.SaveChanges();
+            context.SaveChanges(); // Salva para gerar o ID do restaurante
 
             var mesas = new List<Mesa>
             {
@@ -83,15 +90,15 @@ using (var scope = app.Services.CreateScope())
                 new Mesa { NumeroMesa = "M5", Capacidade = 10, RestauranteId = restaurante.Id }
             };
             context.Mesas.AddRange(mesas);
-            context.SaveChanges();
-            
-            Console.WriteLine("--> Banco populado com sucesso!");
+            context.SaveChanges(); // Salva as mesas
+
+            Console.WriteLine("--> Dados criados com sucesso: Restaurante + 5 Mesas.");
         }
     }
     catch (Exception ex)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Ocorreu um erro ao criar/popular o banco de dados.");
+        logger.LogError(ex, "Erro fatal ao recriar o banco de dados.");
     }
 }
 
@@ -99,13 +106,12 @@ using (var scope = app.Services.CreateScope())
 // 3. PIPELINE
 // ==================================================================
 
+// Swagger mesmo em produção para facilitar testes
 app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseCors("AllowAll");
-
 app.UseAuthorization();
-
 app.MapControllers();
 
 app.Run();
