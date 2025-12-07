@@ -20,7 +20,6 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddControllers();
 
-// Configura o PostgreSQL com a Connection String do appsettings ou Variável de Ambiente
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
@@ -42,10 +41,9 @@ using (var scope = app.Services.CreateScope())
     {
         var context = services.GetRequiredService<AppDbContext>();
         
-        // 1. CRIA AS TABELAS AUTOMATICAMENTE NA NUVEM
+
         context.Database.EnsureCreated();
 
-        // 2. CRIA DADOS INICIAIS (SE ESTIVER VAZIO)
         if (!context.Restaurantes.Any())
         {
             Console.WriteLine("--> Criando dados iniciais no Banco (Seed)...");
@@ -58,7 +56,7 @@ using (var scope = app.Services.CreateScope())
                 TempoPadraoReserva = 90
             };
             context.Restaurantes.Add(restaurante);
-            context.SaveChanges(); // Salva para gerar o ID
+            context.SaveChanges();
 
             var mesas = new List<Mesa>
             {

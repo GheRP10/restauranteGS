@@ -14,7 +14,8 @@ namespace backend.Models
         [MaxLength(100)]
         [Column("nome_res")]
         public string Nome { get; set; } = string.Empty;
-
+         
+         // Endereço do Restaurante
         public string Endereco { get; set; } = string.Empty;
         public string Telefone { get; set; } = string.Empty;
 
