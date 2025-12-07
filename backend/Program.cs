@@ -19,22 +19,22 @@ builder.Services.AddCors(options =>
 builder.Services.AddControllers();
 
 // ------------------------------------------------------------------
-// CONEXÃO COM BANCO (TRADUTOR PARA RAILWAY)
+// CONEXÃO COM BANCO (LOCAL + RAILWAY)
 // ------------------------------------------------------------------
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-// Pega a variável do Railway se estiver em produção
-if (string.IsNullOrEmpty(connectionString))
-{
-    connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
-}
+// Se existir DATABASE_URL (Railway), ela sobrescreve a conexão local
+var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
 
-if (!string.IsNullOrEmpty(connectionString) && connectionString.StartsWith("postgres://"))
+if (!string.IsNullOrEmpty(databaseUrl))
 {
-    var databaseUri = new Uri(connectionString);
+    // Formato vindo do Railway: postgres://user:pass@host:port/dbname
+    var databaseUri = new Uri(databaseUrl);
     var userInfo = databaseUri.UserInfo.Split(':');
-    
-    connectionString = $"Host={databaseUri.Host};Port={databaseUri.Port};Database={databaseUri.AbsolutePath.TrimStart('/')};Username={userInfo[0]};Password={userInfo[1]};Ssl Mode=Require;Trust Server Certificate=true";
+
+    connectionString =
+        $"Host={databaseUri.Host};Port={databaseUri.Port};Database={databaseUri.AbsolutePath.TrimStart('/')};" +
+        $"Username={userInfo[0]};Password={userInfo[1]};Ssl Mode=Require;Trust Server Certificate=true";
 }
 
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -56,18 +56,21 @@ using (var scope = app.Services.CreateScope())
     try
     {
         var context = services.GetRequiredService<AppDbContext>();
-        
-        // Garante que o banco antigo (com colunas erradas) seja apagado
-        context.Database.EnsureDeleted();
-        // Cria o banco novo com a estrutura correta (Restaurante.cs)
+
+        // Em desenvolvimento pode recriar o banco do zero
+        if (app.Environment.IsDevelopment())
+        {
+            context.Database.EnsureDeleted();
+        }
+
+        // Em produção (Railway) só garante que o banco existe
         context.Database.EnsureCreated();
-        // -----------------------------------
 
         // Popula os dados se não existir nenhum restaurante
         if (!context.Restaurantes.Any())
         {
             Console.WriteLine("--> Populando banco de dados...");
-            
+
             // 1. Cria o Restaurante
             var restaurante = new Restaurante
             {
@@ -75,11 +78,11 @@ using (var scope = app.Services.CreateScope())
                 Endereco = "Nuvem Railway, 123",
                 Telefone = "11 99999-9999",
                 TempoPadraoReserva = 90,
-                HoraAbertura = new TimeSpan(18, 0, 0),    // Abre as 18h
-                HoraFechamento = new TimeSpan(23, 59, 0)  // Fecha as 23h59
+                HoraAbertura = new TimeSpan(18, 0, 0),    // Abre às 18h
+                HoraFechamento = new TimeSpan(23, 59, 0)  // Fecha às 23h59
             };
             context.Restaurantes.Add(restaurante);
-            context.SaveChanges(); // Salva para gerar o ID do restaurante
+            context.SaveChanges();
 
             var mesas = new List<Mesa>
             {
@@ -90,7 +93,7 @@ using (var scope = app.Services.CreateScope())
                 new Mesa { NumeroMesa = "M5", Capacidade = 10, RestauranteId = restaurante.Id }
             };
             context.Mesas.AddRange(mesas);
-            context.SaveChanges(); // Salva as mesas
+            context.SaveChanges(); 
 
             Console.WriteLine("--> Dados criados com sucesso: Restaurante + 5 Mesas.");
         }
@@ -98,7 +101,7 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "Erro fatal ao recriar o banco de dados.");
+        logger.LogError(ex, "Erro fatal ao criar/atualizar o banco de dados.");
     }
 }
 
