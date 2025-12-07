@@ -1,5 +1,5 @@
 using backend.Data;
-using backend.Models; // Adicionado para reconhecer Restaurante e Mesa
+using backend.Models;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,19 +20,34 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddControllers();
 
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
+if (string.IsNullOrEmpty(connectionString))
+{
+    connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
+}
+
+if (!string.IsNullOrEmpty(connectionString) && connectionString.StartsWith("postgres://"))
+{
+    var databaseUri = new Uri(connectionString);
+    var userInfo = databaseUri.UserInfo.Split(':');
+    
+    connectionString = $"Host={databaseUri.Host};Port={databaseUri.Port};Database={databaseUri.AbsolutePath.TrimStart('/')};Username={userInfo[0]};Password={userInfo[1]};Ssl Mode=Require;Trust Server Certificate=true";
+}
+// ------------------------------------------------------------------
+
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(connectionString));
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Serviço do RabbitMQ
 builder.Services.AddScoped<backend.Services.RabbitMQService>();
 
 var app = builder.Build();
 
 // ==================================================================
-// 2. AUTO-MIGRATION & SEED (O CORRETOR DO BANCO) 🛠️
+// 2. AUTO-MIGRATION & SEED (CRIA TABELAS E DADOS)
 // ==================================================================
 using (var scope = app.Services.CreateScope())
 {
@@ -41,9 +56,10 @@ using (var scope = app.Services.CreateScope())
     {
         var context = services.GetRequiredService<AppDbContext>();
         
-
+        // Garante que o banco foi criado
         context.Database.EnsureCreated();
 
+        // Se não houver restaurantes, cria os dados padrão
         if (!context.Restaurantes.Any())
         {
             Console.WriteLine("--> Criando dados iniciais no Banco (Seed)...");
@@ -83,11 +99,8 @@ using (var scope = app.Services.CreateScope())
 // 3. PIPELINE
 // ==================================================================
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseCors("AllowAll");
 
