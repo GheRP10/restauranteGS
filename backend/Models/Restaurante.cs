@@ -15,6 +15,9 @@ namespace backend.Models
         [Column("nome_res")]
         public string Nome { get; set; } = string.Empty;
 
+        public string Endereco { get; set; } = string.Empty;
+        public string Telefone { get; set; } = string.Empty;
+
         [Column("tempopadrao_res")]
         public int TempoPadraoReserva { get; set; } 
 
