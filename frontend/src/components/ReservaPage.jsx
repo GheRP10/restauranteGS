@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
+// Base da API: pega do .env (VITE_API_URL) e cai pro localhost em dev
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5010';
+
 export default function ReservaPage() {
   // --- ESTADOS ---
   const [data, setData] = useState('');
@@ -13,20 +16,15 @@ export default function ReservaPage() {
   const [sucesso, setSucesso] = useState('');
   const [buscaRealizada, setBuscaRealizada] = useState(false);
   
-  // --- LÓGICA DO TEMA (Com LocalStorage) ---
   const [temaEscuro, setTemaEscuro] = useState(() => {
-    // 1. Tenta pegar a preferência salva
     const temaSalvo = localStorage.getItem('temaRestaurante');
-    // 2. Se existir, usa ela. Se não, começa como Escuro (true)
     return temaSalvo ? JSON.parse(temaSalvo) : true;
   });
 
-  // Sempre que 'temaEscuro' mudar, salvamos no navegador
   useEffect(() => {
     localStorage.setItem('temaRestaurante', JSON.stringify(temaEscuro));
   }, [temaEscuro]);
 
-  // --- FUNÇÕES ---
   const alternarTema = () => setTemaEscuro(!temaEscuro);
 
   const buscarMesas = async (e) => {
@@ -38,12 +36,16 @@ export default function ReservaPage() {
     setBuscaRealizada(false);
 
     try {
-      const response = await axios.get('http://localhost:5010/api/mesas/disponibilidade', {
-        params: {
-          dataHora: `${data}T${hora}:00`,
-          numeroPessoas: pessoas
+      const response = await axios.get(
+        `${API_URL}/api/mesas/disponibilidade`,
+        {
+          params: {
+            dataHora: `${data}T${hora}:00`,
+            numeroPessoas: pessoas
+          }
         }
-      });
+      );
+
       setMesasDisponiveis(response.data);
       setBuscaRealizada(true);
     } catch (error) {
@@ -55,7 +57,7 @@ export default function ReservaPage() {
   };
 
   const reservarMesa = async (mesaId) => {
-    if(!confirm("Deseja confirmar a reserva desta mesa?")) return;
+    if (!confirm("Deseja confirmar a reserva desta mesa?")) return;
 
     setCarregando(true);
     setErro('');
@@ -64,15 +66,15 @@ export default function ReservaPage() {
     try {
       const payload = {
         mesaId: mesaId,
-        usuarioId: 1, 
+        usuarioId: 1,
         dataHoraInicio: `${data}T${hora}:00`,
         numeroPessoas: parseInt(pessoas)
       };
 
-      await axios.post('http://localhost:5010/api/reservas', payload);
+      await axios.post(`${API_URL}/api/reservas`, payload);
 
       setSucesso('✅ Reserva realizada com sucesso! Te esperamos lá.');
-      setMesasDisponiveis([]); 
+      setMesasDisponiveis([]);
       setBuscaRealizada(false);
       
     } catch (error) {
@@ -86,9 +88,7 @@ export default function ReservaPage() {
 
   return (
     <div className={temaEscuro ? 'dark' : ''}>
-      
       <div className="min-h-screen font-sans transition-colors duration-300 bg-gray-50 text-gray-800 dark:bg-[#121212] dark:text-gray-100 p-4 md:p-8">
-        
         <div className="max-w-4xl mx-auto">
           
           {/* --- CABEÇALHO --- */}
@@ -155,10 +155,10 @@ export default function ReservaPage() {
           )}
 
           {sucesso && (
-             <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-6 rounded shadow-sm dark:bg-green-900/30 dark:text-green-300">
-             <p className="font-bold">Sucesso!</p>
-             <p>{sucesso}</p>
-           </div>
+            <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-6 rounded shadow-sm dark:bg-green-900/30 dark:text-green-300">
+              <p className="font-bold">Sucesso!</p>
+              <p>{sucesso}</p>
+            </div>
           )}
 
           {/* --- RESULTADOS --- */}
