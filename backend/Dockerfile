@@ -1,35 +1,17 @@
-# ================
-# BASE ASP.NET
-# ================
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
-WORKDIR /app
-
-# Railway passa a porta via variável PORT
-ENV ASPNETCORE_URLS=http://+:${PORT}
-
-EXPOSE ${PORT}
-
-# ================
-# BUILD
-# ================
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-# copia tudo
+COPY ["backend.csproj", "./"]
+RUN dotnet restore "backend.csproj"
+
 COPY . .
+RUN dotnet publish "backend.csproj" -c Release -o /app/publish
 
-# RESTAURE O PROJETO
-RUN dotnet restore "./backend.csproj"
-
-# PUBLICA EM RELEASE
-RUN dotnet publish "./backend.csproj" -c Release -o /app/publish
-
-# ================
-# FINAL
-# ================
-FROM base AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
-
 COPY --from=build /app/publish .
+
+ENV ASPNETCORE_URLS=http://+:8080
+EXPOSE 8080
 
 ENTRYPOINT ["dotnet", "backend.dll"]
