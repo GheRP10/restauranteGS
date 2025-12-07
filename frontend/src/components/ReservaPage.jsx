@@ -1,21 +1,20 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-// Base da API: pega do .env (VITE_API_URL) e cai pro localhost em dev
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5010';
+// URL base da API vindo do ambiente Vite (Railway/Dev)
+const API_URL = import.meta.env.VITE_API_URL;
 
 export default function ReservaPage() {
-  // --- ESTADOS ---
   const [data, setData] = useState('');
   const [hora, setHora] = useState('');
   const [pessoas, setPessoas] = useState(2);
   const [mesasDisponiveis, setMesasDisponiveis] = useState([]);
-  
+
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
   const [sucesso, setSucesso] = useState('');
   const [buscaRealizada, setBuscaRealizada] = useState(false);
-  
+
   const [temaEscuro, setTemaEscuro] = useState(() => {
     const temaSalvo = localStorage.getItem('temaRestaurante');
     return temaSalvo ? JSON.parse(temaSalvo) : true;
@@ -27,6 +26,21 @@ export default function ReservaPage() {
 
   const alternarTema = () => setTemaEscuro(!temaEscuro);
 
+  const normalizarListaMesas = (data) => {
+
+    console.log('Resposta bruta de /mesas/disponibilidade:', data);
+
+    if (Array.isArray(data)) {
+      return data;
+    }
+
+    if (data && Array.isArray(data.mesas)) {
+      return data.mesas;
+    }
+
+    return [];
+  };
+
   const buscarMesas = async (e) => {
     e.preventDefault();
     setCarregando(true);
@@ -36,21 +50,27 @@ export default function ReservaPage() {
     setBuscaRealizada(false);
 
     try {
-      const response = await axios.get(
-        `${API_URL}/api/mesas/disponibilidade`,
-        {
-          params: {
-            dataHora: `${data}T${hora}:00`,
-            numeroPessoas: pessoas
-          }
-        }
-      );
+      const url = `${API_URL}/api/mesas/disponibilidade`;
+      console.log('Chamando API de disponibilidade em:', url);
 
-      setMesasDisponiveis(response.data);
+      const response = await axios.get(url, {
+        params: {
+          dataHora: `${data}T${hora}:00`,
+          numeroPessoas: pessoas
+        }
+      });
+
+      const lista = normalizarListaMesas(response.data);
+      setMesasDisponiveis(lista);
       setBuscaRealizada(true);
     } catch (error) {
-      console.error(error);
-      setErro('Erro ao conectar com a API. Verifique o Back-end.');
+      console.error('Erro ao buscar mesas:', error);
+      const status = error.response?.status;
+      if (status) {
+        setErro(`Erro ao conectar com a API (status ${status}).`);
+      } else {
+        setErro('Erro ao conectar com a API. Verifique o Back-end.');
+      }
     } finally {
       setCarregando(false);
     }
@@ -71,16 +91,18 @@ export default function ReservaPage() {
         numeroPessoas: parseInt(pessoas)
       };
 
-      await axios.post(`${API_URL}/api/reservas`, payload);
+      const url = `${API_URL}/api/reservas`;
+      console.log('Enviando reserva para:', url, payload);
+
+      await axios.post(url, payload);
 
       setSucesso('✅ Reserva realizada com sucesso! Te esperamos lá.');
       setMesasDisponiveis([]);
       setBuscaRealizada(false);
-      
     } catch (error) {
-      console.error(error);
-      const msgErro = error.response?.data || 'Erro ao realizar reserva.';
-      setErro(`❌ ${msgErro}`);
+      console.error('Erro ao reservar mesa:', error);
+      const msg = error.response?.data || 'Erro ao realizar reserva.';
+      setErro(`❌ ${msg}`);
     } finally {
       setCarregando(false);
     }
@@ -90,22 +112,20 @@ export default function ReservaPage() {
     <div className={temaEscuro ? 'dark' : ''}>
       <div className="min-h-screen font-sans transition-colors duration-300 bg-gray-50 text-gray-800 dark:bg-[#121212] dark:text-gray-100 p-4 md:p-8">
         <div className="max-w-4xl mx-auto">
-          
-          {/* --- CABEÇALHO --- */}
+          {/* Cabeçalho */}
           <div className="flex justify-between items-center mb-8">
             <h1 className="text-2xl md:text-3xl font-bold text-brand dark:text-violet-500 flex items-center gap-2">
               🍽️ Reserva Fácil
             </h1>
           </div>
 
-          {/* --- CARD DO FORMULÁRIO --- */}
+          {/* Formulário */}
           <div className="bg-white dark:bg-[#1e1e1e] rounded-xl shadow-lg p-6 md:p-8 mb-8 border border-gray-100 dark:border-gray-800">
             <form onSubmit={buscarMesas} className="flex flex-col md:flex-row gap-4 items-end">
-              
               <div className="w-full">
                 <label className="block text-sm font-semibold mb-2 text-gray-600 dark:text-gray-300">Data</label>
-                <input 
-                  type="date" 
+                <input
+                  type="date"
                   required
                   value={data}
                   onChange={e => setData(e.target.value)}
@@ -115,8 +135,8 @@ export default function ReservaPage() {
 
               <div className="w-full">
                 <label className="block text-sm font-semibold mb-2 text-gray-600 dark:text-gray-300">Horário</label>
-                <input 
-                  type="time" 
+                <input
+                  type="time"
                   required
                   value={hora}
                   onChange={e => setHora(e.target.value)}
@@ -126,8 +146,8 @@ export default function ReservaPage() {
 
               <div className="w-full md:w-32">
                 <label className="block text-sm font-semibold mb-2 text-gray-600 dark:text-gray-300">Pessoas</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   min="1" max="20"
                   required
                   value={pessoas}
@@ -136,8 +156,8 @@ export default function ReservaPage() {
                 />
               </div>
 
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 disabled={carregando}
                 className="w-full md:w-auto px-8 py-3 bg-brand hover:bg-brand-hover text-white font-bold rounded-lg shadow-md transition-transform active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
               >
@@ -146,9 +166,9 @@ export default function ReservaPage() {
             </form>
           </div>
 
-          {/* --- MENSAGENS DE FEEDBACK --- */}
+          {/* Mensagens */}
           {erro && (
-            <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded shadow-sm dark:bg-red-900/30 dark:text-red-300 animate-pulse">
+            <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded shadow-sm dark:bg-red-900/30 dark:text-red-300">
               <p className="font-bold">Ops!</p>
               <p>{erro}</p>
             </div>
@@ -161,7 +181,7 @@ export default function ReservaPage() {
             </div>
           )}
 
-          {/* --- RESULTADOS --- */}
+          {/* Resultados */}
           {buscaRealizada && (
             <div className="animate-fade-in">
               <h2 className="text-xl font-bold mb-6 border-b pb-2 border-gray-200 dark:border-gray-700">
@@ -174,20 +194,20 @@ export default function ReservaPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {mesasDisponiveis.map(mesa => (
-                    <div 
-                      key={mesa.id} 
+                  {mesasDisponiveis.map((mesa) => (
+                    <div
+                      key={mesa.id ?? mesa.mesaId}
                       className="group border-2 border-brand/30 hover:border-brand bg-white dark:bg-[#2a2a2a] rounded-xl p-4 text-center transition-all hover:shadow-lg hover:-translate-y-1"
                     >
                       <h3 className="text-2xl font-bold text-brand mb-1 group-hover:scale-110 transition-transform">
-                        {mesa.numeroMesa}
+                        {mesa.numeroMesa ?? mesa.numero}
                       </h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                        👤 {mesa.capacidade} lugares
+                        👤 {(mesa.capacidade ?? mesa.quantidadeLugares) || 0} lugares
                       </p>
-                      
-                      <button 
-                        onClick={() => reservarMesa(mesa.id)}
+
+                      <button
+                        onClick={() => reservarMesa(mesa.id ?? mesa.mesaId)}
                         className="w-full py-2 bg-brand text-white text-sm font-bold rounded hover:bg-brand-hover transition-colors active:scale-95"
                       >
                         Reservar
