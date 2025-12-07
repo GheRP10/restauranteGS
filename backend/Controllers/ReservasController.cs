@@ -1,9 +1,9 @@
 ﻿using backend.Data;
 using backend.DTOs;
 using backend.Models;
+using backend.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using backend.Services;
 
 namespace backend.Controllers
 {
@@ -26,16 +26,14 @@ namespace backend.Controllers
             // 1. Garantir que a DataHoraInicio está em UTC
             DateTime dataInicioUtc = DateTime.SpecifyKind(dto.DataHoraInicio, DateTimeKind.Utc);
 
-            // ==================================================================================
+            // =========================================================================
             // REGRAS DE NEGÓCIO
-            // ==================================================================================
-            
+            // =========================================================================
+
             if (dataInicioUtc < DateTime.UtcNow)
             {
                 return BadRequest("RN.CRS.001 - Não é possível fazer reserva para datas passadas.");
             }
-
-            // ==================================================================================
 
             // 2. Obter Mesa e Restaurante Associado
             var mesa = await _context.Mesas
@@ -56,7 +54,7 @@ namespace backend.Controllers
             int tempoPadrao = mesa.Restaurante.TempoPadraoReserva;
             DateTime dataFimUtc = dataInicioUtc.AddMinutes(tempoPadrao);
 
-            // 4. Iniciar Transação (Bloqueio)
+            // 4. Iniciar Transação  
             using var transaction = await _context.Database.BeginTransactionAsync();
 
             try
@@ -65,8 +63,8 @@ namespace backend.Controllers
                 bool existeConflito = await _context.Reservas.AnyAsync(r =>
                     r.MesaId == dto.MesaId &&
                     r.Status != "CANCELADA" &&
-                    r.DataHoraInicio < dataFimUtc && 
-                    r.DataHoraFim > dataInicioUtc   
+                    r.DataHoraInicio < dataFimUtc &&
+                    r.DataHoraFim > dataInicioUtc
                 );
 
                 if (existeConflito)
@@ -75,7 +73,7 @@ namespace backend.Controllers
                     return Conflict("Esta mesa já está reservada para o horário selecionado.");
                 }
 
-                // 6. Criar e Salvar Nova Reserva   
+                // 6. Criar e Salvar Nova Reserva
                 var novaReserva = new Reserva
                 {
                     MesaId = dto.MesaId,
@@ -93,10 +91,8 @@ namespace backend.Controllers
                 // 7. Confirmar Transação
                 await transaction.CommitAsync();
 
-                // ========================================================
-                // 8. PUBLICAR NOTIFICAÇÃO NO RABBITMQ (Assíncrono) 
-                // ========================================================
-                var dadosNotificacao = new 
+                // 8. PUBLICAR NOTIFICAÇÃO NO RABBITMQ  
+                var dadosNotificacao = new
                 {
                     ReservaId = novaReserva.Id,
                     Data = novaReserva.DataHoraInicio,
@@ -105,8 +101,8 @@ namespace backend.Controllers
                 };
 
                 await _rabbitMQ.EnviarNotificacaoAsync(dadosNotificacao);
-                // ========================================================
 
+                // 9. Retorno
                 return CreatedAtAction(nameof(ListarReservas), new { id = novaReserva.Id }, novaReserva);
             }
             catch (Exception ex)
